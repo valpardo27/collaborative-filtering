@@ -1,11 +1,12 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 from scipy.sparse import load_npz, vstack
 import pandas as pd
 import numpy as np
 import os
 
 # Cargar el dataset de anime
-anime_data = pd.read_csv("anime-dataset-2023.csv")
+anime_data = pd.read_csv("modified_anime_dataset (1).csv")
 
 # Función para cargar y combinar los fragmentos de la matriz
 def load_similarity_matrix():
@@ -24,27 +25,42 @@ similarity_matrix = load_similarity_matrix()
 
 # Crear la aplicación Flask
 app = Flask(__name__)
+CORS(app)  # Habilita CORS en la aplicación
 
 # Ruta para obtener recomendaciones
 @app.route("/recommendations", methods=["GET"])
 def get_recommendations():
-    anime_id = request.args.get("anime_id")
+    anime_ids = request.args.getlist("anime_id")  # Permite recibir una lista de IDs
     top_n = int(request.args.get("top_n", 5))
 
-    if not anime_id:
-        return jsonify({"error": "anime_id is required"}), 400
+    if not anime_ids:
+        return jsonify({"error": "anime_id or list of anime_ids is required"}), 400
 
     try:
-        anime_id = int(anime_id)
-        # Obtener las similitudes para el anime solicitado
-        anime_similarities = similarity_matrix[anime_id].toarray().flatten()
+        # Convertir los IDs a enteros
+        anime_ids = [int(anime_id) for anime_id in anime_ids]
+
+        # Obtener las similitudes para cada anime en el arreglo de IDs
+        similarities = np.zeros(similarity_matrix.shape[0])
+        for anime_id in anime_ids:
+            anime_similarities = similarity_matrix[anime_id].toarray().flatten()
+            similarities += anime_similarities  # Sumar las similitudes para cada anime
+
         # Ordenar los índices de los animes por similitud (de mayor a menor)
-        similar_indices = np.argsort(-anime_similarities)[1:top_n + 1]
-        recommendations = anime_data.iloc[similar_indices].to_dict(orient="records")
+        similar_indices = np.argsort(-similarities)
+
+        # Filtrar los animes originales usados en la recomendación (anime_ids)
+        filtered_indices = [idx for idx in similar_indices if idx not in anime_ids]
+
+        # Limitar los resultados a los top_n y obtener sus datos
+        recommendations = anime_data.iloc[filtered_indices[:top_n]].to_dict(orient="records")
+        
         return jsonify(recommendations)
     except ValueError:
-        return jsonify({"error": "anime_id must be an integer"}), 400
+        return jsonify({"error": "anime_id must be an integer or a list of integers"}), 400
+    except IndexError:
+        return jsonify({"error": "One or more anime_ids are out of range"}), 400
 
 # Ejecutar la aplicación en modo local
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)  # Azure usa el puerto 5000 por defecto para Flask
+    app.run(debug=True)
