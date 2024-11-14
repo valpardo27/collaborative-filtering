@@ -47,4 +47,4 @@ def get_recommendations():
 
 # Ejecutar la aplicación en modo local
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000)  # Azure usa el puerto 5000 por defecto para Flask
